@@ -84,7 +84,6 @@ export class Rs485Service implements OnModuleInit, OnModuleDestroy {
   }
 
   async sendFrame(frame: Rs485Frame): Promise<void> {
-    if (this.config.mode === 'slave') throw new Error('RS485 is in slave mode');
     if (!this.port || !this.port.isOpen) throw new Error('SerialPort not open');
     const buf = Rs485Protocol.buildFrame(frame);
     this.logger.debug(`TX ${buf.toString('hex')}`);
