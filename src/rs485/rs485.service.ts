@@ -60,6 +60,12 @@ export class Rs485Service implements OnModuleInit, OnModuleDestroy {
       pending.resolve(frame);
     });
 
+    if (this.config.mode === 'slave' && this.handlers.size === 0) {
+      // Default test handler: echo payload for any command
+      this.handlers.set(-1 as unknown as number, async (frame) => frame.payload);
+      this.logger.warn('RS485 slave: default echo handler enabled');
+    }
+
     await new Promise<void>((resolve, reject) => {
       this.port?.open((err) => {
         if (err) reject(err);
@@ -121,9 +127,11 @@ export class Rs485Service implements OnModuleInit, OnModuleDestroy {
 
   private async handleSlaveFrame(frame: Rs485Response): Promise<void> {
     const handler = this.handlers.get(frame.command);
-    if (!handler) return;
+    const fallback = this.handlers.get(-1 as unknown as number);
+    if (!handler && !fallback) return;
     try {
-      const payload = await handler({ address: frame.address, command: frame.command, payload: frame.payload });
+      const fn = handler ?? fallback!;
+      const payload = await fn({ address: frame.address, command: frame.command, payload: frame.payload });
       const responseCommand = frame.command | 0x80;
       await this.sendFrame({ address: frame.address, command: responseCommand, payload });
     } catch (err) {
