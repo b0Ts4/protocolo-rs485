@@ -39,9 +39,15 @@ export class Rs485Service implements OnModuleInit, OnModuleDestroy {
     });
 
     this.port.on('error', (err) => this.logger.error(err.message));
-    this.port.on('data', (chunk: Buffer) => this.protocol.push(chunk));
+    this.port.on('data', (chunk: Buffer) => {
+      this.logger.debug(`RX ${chunk.toString('hex')}`);
+      this.protocol.push(chunk);
+    });
 
     this.protocol.on('frame', (frame: Rs485Response) => {
+      this.logger.log(
+        `FRAME addr=${frame.address} cmd=0x${frame.command.toString(16).padStart(2, '0')} payload=${frame.payload.toString('hex')}`
+      );
       if (this.config.mode === 'slave') {
         void this.handleSlaveFrame(frame);
         return;
@@ -75,6 +81,7 @@ export class Rs485Service implements OnModuleInit, OnModuleDestroy {
     if (this.config.mode === 'slave') throw new Error('RS485 is in slave mode');
     if (!this.port || !this.port.isOpen) throw new Error('SerialPort not open');
     const buf = Rs485Protocol.buildFrame(frame);
+    this.logger.debug(`TX ${buf.toString('hex')}`);
     await new Promise<void>((resolve, reject) => {
       this.port?.write(buf, (err) => {
         if (err) reject(err);
