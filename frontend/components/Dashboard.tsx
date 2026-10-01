@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
 
-type EventType = 'request_response' | 't161_current' | 't161_voltage';
+type EventType = 'request_response' | 't161_current' | 't161_voltage' | 't161_power';
 
 type HistoryEvent = {
   id?: string;
@@ -222,6 +222,10 @@ export default function Dashboard() {
               <h3>Tensão (T161)</h3>
               <Line data={chartData.voltage} options={chartOptions('V')} />
             </div>
+            <div className="chart-card">
+              <h3>Potência Ativa (T161)</h3>
+              <Line data={chartData.power} options={chartOptions('W')} />
+            </div>
           </div>
         </section>
 
@@ -277,6 +281,7 @@ function formatType(type: EventType) {
   if (type === 'request_response') return 'Request';
   if (type === 't161_current') return 'Corrente';
   if (type === 't161_voltage') return 'Tensão';
+  if (type === 't161_power') return 'Potência';
   return type;
 }
 
@@ -286,10 +291,13 @@ function formatDetails(item: HistoryEvent) {
     return `Addr ${res.address?.hex ?? '--'} Cmd ${res.command?.hex ?? '--'} Payload ${res.payloadHex ?? '--'}`;
   }
   if (item.type === 't161_current') {
-    return `Corrente ${item.payload?.currentA ?? '--'} A`;
+    return `Corrente A ${item.payload?.currentA ?? '--'} A, B ${item.payload?.currentB ?? '--'} A, C ${item.payload?.currentC ?? '--'} A`;
   }
   if (item.type === 't161_voltage') {
     return `Tensão ${item.payload?.voltageV ?? '--'} V (${item.payload?.phase ?? '-'})`;
+  }
+  if (item.type === 't161_power') {
+    return `Potência ${item.payload?.powerTotal ?? '--'} W`;
   }
   return '—';
 }
@@ -297,18 +305,29 @@ function formatDetails(item: HistoryEvent) {
 function buildChartData(history: HistoryEvent[]) {
   const currentLabels: string[] = [];
   const currentValues: number[] = [];
+  const currentValuesB: number[] = [];
+  const currentValuesC: number[] = [];
   const voltageLabels: string[] = [];
   const voltageA: number[] = [];
   const voltageB: number[] = [];
   const voltageC: number[] = [];
+  const powerLabels: string[] = [];
+  const powerA: number[] = [];
+  const powerB: number[] = [];
+  const powerC: number[] = [];
+  const powerTotal: number[] = [];
 
   const sorted = [...history].reverse();
   for (const item of sorted) {
     if (item.type === 't161_current') {
-      const value = Number(item.payload?.currentA);
-      if (Number.isFinite(value)) {
+      const valueA = Number(item.payload?.currentA);
+      const valueB = Number(item.payload?.currentB);
+      const valueC = Number(item.payload?.currentC);
+      if (Number.isFinite(valueA) && Number.isFinite(valueB) && Number.isFinite(valueC)) {
         currentLabels.push(new Date(item.eventAt).toLocaleTimeString('pt-BR'));
-        currentValues.push(value);
+        currentValues.push(valueA);
+        currentValuesB.push(valueB);
+        currentValuesC.push(valueC);
       }
     }
     if (item.type === 't161_voltage') {
@@ -322,6 +341,25 @@ function buildChartData(history: HistoryEvent[]) {
         voltageC.push(phase === 'C' ? value : NaN);
       }
     }
+    if (item.type === 't161_power') {
+      const valueTotal = Number(item.payload?.powerTotal);
+      const valueA = Number(item.payload?.powerA);
+      const valueB = Number(item.payload?.powerB);
+      const valueC = Number(item.payload?.powerC);
+      if (
+        Number.isFinite(valueTotal) &&
+        Number.isFinite(valueA) &&
+        Number.isFinite(valueB) &&
+        Number.isFinite(valueC)
+      ) {
+        const label = new Date(item.eventAt).toLocaleTimeString('pt-BR');
+        powerLabels.push(label);
+        powerA.push(valueA);
+        powerB.push(valueB);
+        powerC.push(valueC);
+        powerTotal.push(valueTotal);
+      }
+    }
   }
 
   return {
@@ -329,10 +367,24 @@ function buildChartData(history: HistoryEvent[]) {
       labels: currentLabels.slice(-120),
       datasets: [
         {
-          label: 'Corrente (A)',
+          label: 'Fase A (A)',
           data: currentValues.slice(-120),
           borderColor: '#ff6b6b',
           backgroundColor: 'rgba(255, 107, 107, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase B (A)',
+          data: currentValuesB.slice(-120),
+          borderColor: '#ffd166',
+          backgroundColor: 'rgba(255, 209, 102, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase C (A)',
+          data: currentValuesC.slice(-120),
+          borderColor: '#4ecdc4',
+          backgroundColor: 'rgba(78, 205, 196, 0.2)',
           tension: 0.2,
         },
       ],
@@ -366,6 +418,39 @@ function buildChartData(history: HistoryEvent[]) {
         },
       ],
     },
+    power: {
+      labels: powerLabels.slice(-120),
+      datasets: [
+        {
+          label: 'Fase A (W)',
+          data: powerA.slice(-120),
+          borderColor: '#ff8fab',
+          backgroundColor: 'rgba(255, 143, 171, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase B (W)',
+          data: powerB.slice(-120),
+          borderColor: '#ffd166',
+          backgroundColor: 'rgba(255, 209, 102, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase C (W)',
+          data: powerC.slice(-120),
+          borderColor: '#83c5be',
+          backgroundColor: 'rgba(131, 197, 190, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Total (W)',
+          data: powerTotal.slice(-120),
+          borderColor: '#0f172a',
+          backgroundColor: 'rgba(15, 23, 42, 0.15)',
+          tension: 0.2,
+        },
+      ],
+    },
   };
 }
 
@@ -394,10 +479,24 @@ function emptyChartData() {
       labels: [] as string[],
       datasets: [
         {
-          label: 'Corrente (A)',
+          label: 'Fase A (A)',
           data: [] as number[],
           borderColor: '#ff6b6b',
           backgroundColor: 'rgba(255, 107, 107, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase B (A)',
+          data: [] as number[],
+          borderColor: '#ffd166',
+          backgroundColor: 'rgba(255, 209, 102, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase C (A)',
+          data: [] as number[],
+          borderColor: '#4ecdc4',
+          backgroundColor: 'rgba(78, 205, 196, 0.2)',
           tension: 0.2,
         },
       ],
@@ -431,27 +530,75 @@ function emptyChartData() {
         },
       ],
     },
+    power: {
+      labels: [] as string[],
+      datasets: [
+        {
+          label: 'Fase A (W)',
+          data: [] as number[],
+          borderColor: '#ff8fab',
+          backgroundColor: 'rgba(255, 143, 171, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase B (W)',
+          data: [] as number[],
+          borderColor: '#ffd166',
+          backgroundColor: 'rgba(255, 209, 102, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Fase C (W)',
+          data: [] as number[],
+          borderColor: '#83c5be',
+          backgroundColor: 'rgba(131, 197, 190, 0.2)',
+          tension: 0.2,
+        },
+        {
+          label: 'Total (W)',
+          data: [] as number[],
+          borderColor: '#0f172a',
+          backgroundColor: 'rgba(15, 23, 42, 0.15)',
+          tension: 0.2,
+        },
+      ],
+    },
   };
 }
 
 function appendToChart(currentData: ReturnType<typeof emptyChartData>, event: HistoryEvent) {
   const maxPoints = 120;
+  const currentDatasets =
+    currentData.current.datasets.length >= 3
+      ? currentData.current.datasets
+      : [
+          ...currentData.current.datasets,
+          ...emptyChartData().current.datasets.slice(currentData.current.datasets.length),
+        ];
   const next = {
     current: {
       labels: [...currentData.current.labels],
-      datasets: currentData.current.datasets.map((ds) => ({ ...ds, data: [...ds.data] })),
+      datasets: currentDatasets.map((ds) => ({ ...ds, data: [...ds.data] })),
     },
     voltage: {
       labels: [...currentData.voltage.labels],
       datasets: currentData.voltage.datasets.map((ds) => ({ ...ds, data: [...ds.data] })),
     },
+    power: {
+      labels: [...currentData.power.labels],
+      datasets: currentData.power.datasets.map((ds) => ({ ...ds, data: [...ds.data] })),
+    },
   };
 
   if (event.type === 't161_current') {
-    const value = Number(event.payload?.currentA);
-    if (Number.isFinite(value)) {
+    const valueA = Number(event.payload?.currentA);
+    const valueB = Number(event.payload?.currentB);
+    const valueC = Number(event.payload?.currentC);
+    if (Number.isFinite(valueA) && Number.isFinite(valueB) && Number.isFinite(valueC)) {
       next.current.labels.push(new Date(event.eventAt).toLocaleTimeString('pt-BR'));
-      next.current.datasets[0].data.push(value);
+      next.current.datasets[0].data.push(valueA);
+      next.current.datasets[1].data.push(valueB);
+      next.current.datasets[2].data.push(valueC);
     }
   }
 
@@ -470,14 +617,43 @@ function appendToChart(currentData: ReturnType<typeof emptyChartData>, event: Hi
     }
   }
 
+  if (event.type === 't161_power') {
+    const valueTotal = Number(event.payload?.powerTotal);
+    const valueA = Number(event.payload?.powerA);
+    const valueB = Number(event.payload?.powerB);
+    const valueC = Number(event.payload?.powerC);
+    if (
+      Number.isFinite(valueTotal) &&
+      Number.isFinite(valueA) &&
+      Number.isFinite(valueB) &&
+      Number.isFinite(valueC)
+    ) {
+      const label = new Date(event.eventAt).toLocaleTimeString('pt-BR');
+      next.power.labels.push(label);
+      next.power.datasets[0].data.push(valueA);
+      next.power.datasets[1].data.push(valueB);
+      next.power.datasets[2].data.push(valueC);
+      next.power.datasets[3].data.push(valueTotal);
+    }
+  }
+
   if (next.current.labels.length > maxPoints) {
     next.current.labels = next.current.labels.slice(-maxPoints);
-    next.current.datasets[0].data = next.current.datasets[0].data.slice(-maxPoints);
+    for (const ds of next.current.datasets) {
+      ds.data = ds.data.slice(-maxPoints);
+    }
   }
 
   if (next.voltage.labels.length > maxPoints) {
     next.voltage.labels = next.voltage.labels.slice(-maxPoints);
     for (const ds of next.voltage.datasets) {
+      ds.data = ds.data.slice(-maxPoints);
+    }
+  }
+
+  if (next.power.labels.length > maxPoints) {
+    next.power.labels = next.power.labels.slice(-maxPoints);
+    for (const ds of next.power.datasets) {
       ds.data = ds.data.slice(-maxPoints);
     }
   }

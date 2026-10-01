@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Rs485Service } from './rs485.service';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { fetchHistory, HistoryEventType, insertEvent } from '../db';
-import { readT161Current, readT161Voltage } from './rs485.metrics';
+import { readT161Current, readT161Power, readT161Voltage } from './rs485.metrics';
 import { Rs485Frame, Rs485Response } from './rs485.types';
 
 type SendBody = {
@@ -22,6 +22,10 @@ type T161CurrentBody = {
 type T161VoltageBody = {
   address: number;
   phase?: 'A' | 'B' | 'C';
+};
+
+type T161PowerBody = {
+  address: number;
 };
 
 class HttpError extends Error {
@@ -165,6 +169,25 @@ export function createRs485Router(rs485: Rs485Service, hub?: RealtimeHub) {
     })
   );
 
+  router.post(
+    '/t161/power',
+    asyncHandler(async (req, res) => {
+      const body = req.body as T161PowerBody;
+      if (rs485.isSlave()) throw new HttpError(400, 'RS485 is in slave mode');
+      const address = requireAddress(body.address);
+
+      const responseBody = await readT161Power(rs485, address);
+      const eventAt = new Date().toISOString();
+      await insertEvent('t161_power', responseBody, eventAt);
+      hub?.broadcast({
+        type: 't161_power',
+        timestamp: eventAt,
+        data: responseBody,
+      });
+      res.json(responseBody);
+    })
+  );
+
   return router;
 }
 
@@ -222,7 +245,7 @@ function parseLimit(value: unknown): number {
 function parseType(value: unknown): HistoryEventType | null {
   if (!value) return null;
   const val = Array.isArray(value) ? value[0] : value;
-  if (val === 'request_response' || val === 't161_current' || val === 't161_voltage') {
+  if (val === 'request_response' || val === 't161_current' || val === 't161_voltage' || val === 't161_power') {
     return val;
   }
   throw new HttpError(400, 'Invalid type');

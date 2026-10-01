@@ -6,7 +6,7 @@ import { createErrorHandler, createRs485Router } from './rs485/rs485.routes';
 import { Rs485Service } from './rs485/rs485.service';
 import { RealtimeHub } from './realtime/realtime.hub';
 import { closeDb, initDb, insertEvent } from './db';
-import { readT161Current, readT161Voltage } from './rs485/rs485.metrics';
+import { readT161Current, readT161Power, readT161Voltage } from './rs485/rs485.metrics';
 
 async function bootstrap(): Promise<void> {
   const app = express();
@@ -30,7 +30,7 @@ async function bootstrap(): Promise<void> {
     console.error('HTTP server error:', err);
   });
 
-  server.listen(port, () => {
+  server.listen(port, '0.0.0.0', () => {
     console.log(`HTTP server listening on port ${port}`);
   });
 
@@ -60,6 +60,11 @@ async function bootstrap(): Promise<void> {
               await insertEvent('t161_voltage', voltage, voltageEventAt);
               hub.broadcast({ type: 't161_voltage', timestamp: voltageEventAt, data: voltage });
             }
+
+            const power = await readT161Power(rs485, cronAddress);
+            const powerEventAt = new Date().toISOString();
+            await insertEvent('t161_power', power, powerEventAt);
+            hub.broadcast({ type: 't161_power', timestamp: powerEventAt, data: power });
           } catch (err) {
             console.error('Cron read failed:', err);
           } finally {

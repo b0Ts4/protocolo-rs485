@@ -92,8 +92,6 @@ export class Rs485Service {
   async sendFrame(frame: Rs485Frame): Promise<void> {
     if (!this.port || !this.port.isOpen) throw new Error('SerialPort not open');
     const buf = Rs485Protocol.buildFrame(frame);
-    console.log(`TX ${buf.toString('hex')}`);
-    this.logger.debug(`TX ${buf.toString('hex')}`);
     await new Promise<void>((resolve, reject) => {
       this.port?.write(buf, (err) => {
         if (err) reject(err);
