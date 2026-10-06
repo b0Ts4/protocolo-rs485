@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
+import type { ChartOptions } from 'chart.js';
 
 type EventType = 'request_response' | 't161_current' | 't161_voltage' | 't161_power';
 
@@ -454,7 +455,7 @@ function buildChartData(history: HistoryEvent[]) {
   };
 }
 
-function chartOptions(unit: string) {
+function chartOptions(unit: string): ChartOptions<'line'> {
   return {
     responsive: true,
     maintainAspectRatio: false,
