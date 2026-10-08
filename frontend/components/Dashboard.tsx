@@ -5,7 +5,7 @@ import { Line } from 'react-chartjs-2';
 import 'chart.js/auto';
 import type { ChartOptions } from 'chart.js';
 
-type EventType = 'request_response' | 't161_current' | 't161_voltage' | 't161_power';
+type EventType = 'request_response' | 't161_current' | 't161_voltage' | 't161_power' | 't161_snapshot';
 
 type HistoryEvent = {
   id?: string;
@@ -227,6 +227,10 @@ export default function Dashboard() {
               <h3>Potência Ativa (T161)</h3>
               <Line data={chartData.power} options={chartOptions('W')} />
             </div>
+            <div className="chart-card">
+              <h3>Energia Total (T161)</h3>
+              <Line data={chartData.energy} options={chartOptions('kWh / kvarh')} />
+            </div>
           </div>
         </section>
 
@@ -283,6 +287,7 @@ function formatType(type: EventType) {
   if (type === 't161_current') return 'Corrente';
   if (type === 't161_voltage') return 'Tensão';
   if (type === 't161_power') return 'Potência';
+  if (type === 't161_snapshot') return 'Snapshot';
   return type;
 }
 
@@ -300,7 +305,81 @@ function formatDetails(item: HistoryEvent) {
   if (item.type === 't161_power') {
     return `Potência ${item.payload?.powerTotal ?? '--'} W`;
   }
+  if (item.type === 't161_snapshot') {
+    return `Ia ${formatNumber(item.payload?.current?.phaseA)} A, Va ${formatNumber(
+      item.payload?.voltage?.phaseA
+    )} V, Ptotal ${formatNumber(item.payload?.activePower?.total)} W, E ativa ${formatNumber(
+      item.payload?.energy?.activeDirectTotalKwh
+    )} kWh`;
+  }
   return '—';
+}
+
+function formatNumber(value: unknown) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '--';
+  return num.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+}
+
+function appendSnapshotPoint(
+  item: HistoryEvent,
+  currentLabels: string[],
+  currentA: number[],
+  currentB: number[],
+  currentC: number[],
+  voltageLabels: string[],
+  voltageA: number[],
+  voltageB: number[],
+  voltageC: number[],
+  powerLabels: string[],
+  powerA: number[],
+  powerB: number[],
+  powerC: number[],
+  powerTotal: number[],
+  energyLabels: string[],
+  activeEnergyTotal: number[],
+  reactiveEnergyTotal: number[]
+) {
+  const label = new Date(item.eventAt).toLocaleTimeString('pt-BR');
+  const ia = Number(item.payload?.current?.phaseA);
+  const ib = Number(item.payload?.current?.phaseB);
+  const ic = Number(item.payload?.current?.phaseC);
+  if (Number.isFinite(ia) && Number.isFinite(ib) && Number.isFinite(ic)) {
+    currentLabels.push(label);
+    currentA.push(ia);
+    currentB.push(ib);
+    currentC.push(ic);
+  }
+
+  const va = Number(item.payload?.voltage?.phaseA);
+  const vb = Number(item.payload?.voltage?.phaseB);
+  const vc = Number(item.payload?.voltage?.phaseC);
+  if (Number.isFinite(va) && Number.isFinite(vb) && Number.isFinite(vc)) {
+    voltageLabels.push(label);
+    voltageA.push(va);
+    voltageB.push(vb);
+    voltageC.push(vc);
+  }
+
+  const pa = Number(item.payload?.activePower?.phaseA);
+  const pb = Number(item.payload?.activePower?.phaseB);
+  const pc = Number(item.payload?.activePower?.phaseC);
+  const ps = Number(item.payload?.activePower?.total);
+  if (Number.isFinite(pa) && Number.isFinite(pb) && Number.isFinite(pc) && Number.isFinite(ps)) {
+    powerLabels.push(label);
+    powerA.push(pa);
+    powerB.push(pb);
+    powerC.push(pc);
+    powerTotal.push(ps);
+  }
+
+  const activeTotal = Number(item.payload?.energy?.activeDirectTotalKwh);
+  const reactiveTotal = Number(item.payload?.energy?.reactiveDirectTotalKvarh);
+  if (Number.isFinite(activeTotal) && Number.isFinite(reactiveTotal)) {
+    energyLabels.push(label);
+    activeEnergyTotal.push(activeTotal);
+    reactiveEnergyTotal.push(reactiveTotal);
+  }
 }
 
 function buildChartData(history: HistoryEvent[]) {
@@ -317,6 +396,9 @@ function buildChartData(history: HistoryEvent[]) {
   const powerB: number[] = [];
   const powerC: number[] = [];
   const powerTotal: number[] = [];
+  const energyLabels: string[] = [];
+  const activeEnergyTotal: number[] = [];
+  const reactiveEnergyTotal: number[] = [];
 
   const sorted = [...history].reverse();
   for (const item of sorted) {
@@ -360,6 +442,27 @@ function buildChartData(history: HistoryEvent[]) {
         powerC.push(valueC);
         powerTotal.push(valueTotal);
       }
+    }
+    if (item.type === 't161_snapshot') {
+      appendSnapshotPoint(
+        item,
+        currentLabels,
+        currentValues,
+        currentValuesB,
+        currentValuesC,
+        voltageLabels,
+        voltageA,
+        voltageB,
+        voltageC,
+        powerLabels,
+        powerA,
+        powerB,
+        powerC,
+        powerTotal,
+        energyLabels,
+        activeEnergyTotal,
+        reactiveEnergyTotal
+      );
     }
   }
 
@@ -448,6 +551,25 @@ function buildChartData(history: HistoryEvent[]) {
           data: powerTotal.slice(-120),
           borderColor: '#0f172a',
           backgroundColor: 'rgba(15, 23, 42, 0.15)',
+          tension: 0.2,
+        },
+      ],
+    },
+    energy: {
+      labels: energyLabels.slice(-120),
+      datasets: [
+        {
+          label: 'Ativa direta total (kWh)',
+          data: activeEnergyTotal.slice(-120),
+          borderColor: '#2563eb',
+          backgroundColor: 'rgba(37, 99, 235, 0.16)',
+          tension: 0.2,
+        },
+        {
+          label: 'Reativa direta total (kvarh)',
+          data: reactiveEnergyTotal.slice(-120),
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.16)',
           tension: 0.2,
         },
       ],
@@ -564,6 +686,25 @@ function emptyChartData() {
         },
       ],
     },
+    energy: {
+      labels: [] as string[],
+      datasets: [
+        {
+          label: 'Ativa direta total (kWh)',
+          data: [] as number[],
+          borderColor: '#2563eb',
+          backgroundColor: 'rgba(37, 99, 235, 0.16)',
+          tension: 0.2,
+        },
+        {
+          label: 'Reativa direta total (kvarh)',
+          data: [] as number[],
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.16)',
+          tension: 0.2,
+        },
+      ],
+    },
   };
 }
 
@@ -588,6 +729,10 @@ function appendToChart(currentData: ReturnType<typeof emptyChartData>, event: Hi
     power: {
       labels: [...currentData.power.labels],
       datasets: currentData.power.datasets.map((ds) => ({ ...ds, data: [...ds.data] })),
+    },
+    energy: {
+      labels: [...currentData.energy.labels],
+      datasets: currentData.energy.datasets.map((ds) => ({ ...ds, data: [...ds.data] })),
     },
   };
 
@@ -638,6 +783,54 @@ function appendToChart(currentData: ReturnType<typeof emptyChartData>, event: Hi
     }
   }
 
+  if (event.type === 't161_snapshot') {
+    const label = new Date(event.eventAt).toLocaleTimeString('pt-BR');
+    const currentA = Number(event.payload?.current?.phaseA);
+    const currentB = Number(event.payload?.current?.phaseB);
+    const currentC = Number(event.payload?.current?.phaseC);
+    if (Number.isFinite(currentA) && Number.isFinite(currentB) && Number.isFinite(currentC)) {
+      next.current.labels.push(label);
+      next.current.datasets[0].data.push(currentA);
+      next.current.datasets[1].data.push(currentB);
+      next.current.datasets[2].data.push(currentC);
+    }
+
+    const voltageA = Number(event.payload?.voltage?.phaseA);
+    const voltageB = Number(event.payload?.voltage?.phaseB);
+    const voltageC = Number(event.payload?.voltage?.phaseC);
+    if (Number.isFinite(voltageA) && Number.isFinite(voltageB) && Number.isFinite(voltageC)) {
+      next.voltage.labels.push(label);
+      next.voltage.datasets[0].data.push(voltageA);
+      next.voltage.datasets[1].data.push(voltageB);
+      next.voltage.datasets[2].data.push(voltageC);
+    }
+
+    const powerA = Number(event.payload?.activePower?.phaseA);
+    const powerB = Number(event.payload?.activePower?.phaseB);
+    const powerC = Number(event.payload?.activePower?.phaseC);
+    const powerTotal = Number(event.payload?.activePower?.total);
+    if (
+      Number.isFinite(powerA) &&
+      Number.isFinite(powerB) &&
+      Number.isFinite(powerC) &&
+      Number.isFinite(powerTotal)
+    ) {
+      next.power.labels.push(label);
+      next.power.datasets[0].data.push(powerA);
+      next.power.datasets[1].data.push(powerB);
+      next.power.datasets[2].data.push(powerC);
+      next.power.datasets[3].data.push(powerTotal);
+    }
+
+    const activeTotal = Number(event.payload?.energy?.activeDirectTotalKwh);
+    const reactiveTotal = Number(event.payload?.energy?.reactiveDirectTotalKvarh);
+    if (Number.isFinite(activeTotal) && Number.isFinite(reactiveTotal)) {
+      next.energy.labels.push(label);
+      next.energy.datasets[0].data.push(activeTotal);
+      next.energy.datasets[1].data.push(reactiveTotal);
+    }
+  }
+
   if (next.current.labels.length > maxPoints) {
     next.current.labels = next.current.labels.slice(-maxPoints);
     for (const ds of next.current.datasets) {
@@ -655,6 +848,13 @@ function appendToChart(currentData: ReturnType<typeof emptyChartData>, event: Hi
   if (next.power.labels.length > maxPoints) {
     next.power.labels = next.power.labels.slice(-maxPoints);
     for (const ds of next.power.datasets) {
+      ds.data = ds.data.slice(-maxPoints);
+    }
+  }
+
+  if (next.energy.labels.length > maxPoints) {
+    next.energy.labels = next.energy.labels.slice(-maxPoints);
+    for (const ds of next.energy.datasets) {
       ds.data = ds.data.slice(-maxPoints);
     }
   }

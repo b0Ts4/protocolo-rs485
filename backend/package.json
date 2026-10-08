@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node dist/main.js",
     "start:dev": "tsc -w -p tsconfig.json",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node test/t161-snapshot.test.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

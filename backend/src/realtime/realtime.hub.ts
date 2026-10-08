@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 
 type RealtimeEvent = {
-  type: 'request_response' | 't161_current' | 't161_voltage' | 't161_power';
+  type: 'request_response' | 't161_current' | 't161_voltage' | 't161_power' | 't161_snapshot';
   timestamp: string;
   data: unknown;
 };

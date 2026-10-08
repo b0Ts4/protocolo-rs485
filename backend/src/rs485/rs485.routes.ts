@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Rs485Service } from './rs485.service';
 import { RealtimeHub } from '../realtime/realtime.hub';
 import { fetchHistory, HistoryEventType, insertEvent } from '../db';
-import { readT161Current, readT161Power, readT161Voltage } from './rs485.metrics';
+import { readT161Current, readT161Power, readT161Snapshot, readT161Voltage } from './rs485.metrics';
 import { Rs485Frame, Rs485Response } from './rs485.types';
 
 type SendBody = {
@@ -25,6 +25,10 @@ type T161VoltageBody = {
 };
 
 type T161PowerBody = {
+  address: number;
+};
+
+type T161SnapshotBody = {
   address: number;
 };
 
@@ -122,6 +126,25 @@ export function createRs485Router(rs485: Rs485Service, hub?: RealtimeHub) {
       await insertEvent('request_response', responseBody, eventAt);
       hub?.broadcast({
         type: 'request_response',
+        timestamp: eventAt,
+        data: responseBody,
+      });
+      res.json(responseBody);
+    })
+  );
+
+  router.post(
+    '/t161/snapshot',
+    asyncHandler(async (req, res) => {
+      const body = req.body as T161SnapshotBody;
+      if (rs485.isSlave()) throw new HttpError(400, 'RS485 is in slave mode');
+      const address = requireAddress(body.address);
+
+      const responseBody = await readT161Snapshot(rs485, address);
+      const eventAt = new Date().toISOString();
+      await insertEvent('t161_snapshot', responseBody, eventAt);
+      hub?.broadcast({
+        type: 't161_snapshot',
         timestamp: eventAt,
         data: responseBody,
       });
@@ -245,7 +268,13 @@ function parseLimit(value: unknown): number {
 function parseType(value: unknown): HistoryEventType | null {
   if (!value) return null;
   const val = Array.isArray(value) ? value[0] : value;
-  if (val === 'request_response' || val === 't161_current' || val === 't161_voltage' || val === 't161_power') {
+  if (
+    val === 'request_response' ||
+    val === 't161_current' ||
+    val === 't161_voltage' ||
+    val === 't161_power' ||
+    val === 't161_snapshot'
+  ) {
     return val;
   }
   throw new HttpError(400, 'Invalid type');

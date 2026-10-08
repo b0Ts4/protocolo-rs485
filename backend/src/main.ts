@@ -6,7 +6,7 @@ import { createErrorHandler, createRs485Router } from './rs485/rs485.routes';
 import { Rs485Service } from './rs485/rs485.service';
 import { RealtimeHub } from './realtime/realtime.hub';
 import { closeDb, initDb, insertEvent } from './db';
-import { readT161Current, readT161Power, readT161Voltage } from './rs485/rs485.metrics';
+import { readT161Snapshot } from './rs485/rs485.metrics';
 
 async function bootstrap(): Promise<void> {
   const app = express();
@@ -36,10 +36,6 @@ async function bootstrap(): Promise<void> {
 
   const intervalMs = Number(process.env.RS485_CRON_INTERVAL_MS ?? 10000);
   const cronAddress = Number(process.env.RS485_CRON_ADDRESS ?? 12);
-  const cronPhases = String(process.env.RS485_CRON_PHASES ?? 'A,B,C')
-    .split(',')
-    .map((p) => p.trim().toUpperCase())
-    .filter((p) => p === 'A' || p === 'B' || p === 'C') as Array<'A' | 'B' | 'C'>;
   const cronEnabled = (process.env.RS485_CRON_ENABLED ?? '1') !== '0';
 
   let cronRunning = false;
@@ -50,21 +46,9 @@ async function bootstrap(): Promise<void> {
           cronRunning = true;
           try {
             const eventAt = new Date().toISOString();
-            const current = await readT161Current(rs485, cronAddress);
-            await insertEvent('t161_current', current, eventAt);
-            hub.broadcast({ type: 't161_current', timestamp: eventAt, data: current });
-
-            for (const phase of cronPhases) {
-              const voltage = await readT161Voltage(rs485, cronAddress, phase);
-              const voltageEventAt = new Date().toISOString();
-              await insertEvent('t161_voltage', voltage, voltageEventAt);
-              hub.broadcast({ type: 't161_voltage', timestamp: voltageEventAt, data: voltage });
-            }
-
-            const power = await readT161Power(rs485, cronAddress);
-            const powerEventAt = new Date().toISOString();
-            await insertEvent('t161_power', power, powerEventAt);
-            hub.broadcast({ type: 't161_power', timestamp: powerEventAt, data: power });
+            const snapshot = await readT161Snapshot(rs485, cronAddress);
+            await insertEvent('t161_snapshot', snapshot, eventAt);
+            hub.broadcast({ type: 't161_snapshot', timestamp: eventAt, data: snapshot });
           } catch (err) {
             console.error('Cron read failed:', err);
           } finally {

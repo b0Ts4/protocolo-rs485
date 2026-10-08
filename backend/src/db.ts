@@ -11,7 +11,12 @@ export const db = new Pool({
   connectionTimeoutMillis: 5000,
 });
 
-export type HistoryEventType = 'request_response' | 't161_current' | 't161_voltage' | 't161_power';
+export type HistoryEventType =
+  | 'request_response'
+  | 't161_current'
+  | 't161_voltage'
+  | 't161_power'
+  | 't161_snapshot';
 
 export type HistoryEvent = {
   id: string;
